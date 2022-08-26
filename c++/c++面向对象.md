@@ -478,9 +478,10 @@ public:
    friend void printWidth( Box box );
    void setWidth( double wid );
 };
-//声明ClassTwo是友元类
-要在ClassOne中加上
-friend class ClassTwo;
+
+
+//如果声明ClassTwo是友元类
+要在ClassOne中加上friend class ClassTwo;
 ```
 
 实例：
@@ -860,8 +861,6 @@ Constructor called.
 Constructor called.
 Final Stage Count: 2
 ```
-
-![1641715256186](C:\Users\Π\AppData\Roaming\Typora\typora-user-images\1641715256186.png)
 
 ### 三、继承
 
