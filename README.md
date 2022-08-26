@@ -49,3 +49,14 @@ To github.com:taozhuowei/StoreMyToys.git
   b843c89..bc04ef1  master -> master
 ```
 
+
+## 问题2:git push的时候出现
+2022.8.26
+```bash
+Connection reset by 20.205.243.166 port 22
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+```
+**应该网络的问题,打开梯子多试几遍**
