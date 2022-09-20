@@ -1,0 +1,360 @@
+关键词：Python、调包、线性规划、指派问题、运输问题、pulp、混合整数线性规划（MILP）
+
+注：此文章是线性规划的调包实现，具体步骤原理请搜索具体解法。
+
+  本文章的各个问题可能会采用多种调用方法，为什么？因为这些包各有特点，有些语法特别像matlab，只要稍稍改变即可达成代码交换；而有些包利用了python本身的特性，在灵活度与代码的可读性上更高。我认为这些包各有优劣，各位各持所需吧。
+
+  看了本文章能做到什么？你可以在本文章内学到线性规划的几个问题的求解方式，并学会如何用pulp包解决线性规划问题。无论是整数规划（Integer Program）、01规划（Binary Program）还是混合整数线性规划（MILP），你都可以得到很好的解题方法。
+
+## 一、线性规划
+
+> 该问题引用自《数学建模算法与应用-司守奎》第一章线性规划 3.线性规划
+> 包的具体使用可参考[scipy官网](https://links.jianshu.com/go?to=https%3A%2F%2Fdocs.scipy.org%2Fdoc%2Fscipy%2Freference%2Fgenerated%2Fscipy.optimize.linprog.html)
+
+  求解最普通的线性规划问题：![\min{z} = 2x_1+3x_2+x_3 \\ \begin{equation} \left\{ \begin{array}{lr} x_1 + 4x_2+2x_3 \geq 8 \\ 3x_1 + 2x_2 \geq 6 \\ x_1,x_2,x_3 \geq 0 \end{array} \right. \end{equation}](https://math.jianshu.com/math?formula=%5Cmin%7Bz%7D%20%3D%202x_1%2B3x_2%2Bx_3%20%5C%5C%20%5Cbegin%7Bequation%7D%20%5Cleft%5C%7B%20%5Cbegin%7Barray%7D%7Blr%7D%20x_1%20%2B%204x_2%2B2x_3%20%5Cgeq%208%20%5C%5C%203x_1%20%2B%202x_2%20%5Cgeq%206%20%5C%5C%20x_1%2Cx_2%2Cx_3%20%5Cgeq%200%20%5Cend%7Barray%7D%20%5Cright.%20%5Cend%7Bequation%7D)
+
+#### scipy调包代码
+
+
+
+```python
+import numpy as np
+
+z = np.array([2, 3, 1])
+
+a = np.array([[1, 4, 2], [3, 2, 0]])
+
+b = np.array([8, 6])
+
+x1_bound = x2_bound = x3_bound =(0, None)
+
+from scipy import optimize
+
+res = optimize.linprog(z, A_ub=-a, b_ub=-b,bounds=(x1_bound, x2_bound, x3_bound))
+
+print(res)
+
+#output:
+#     fun: 7.0
+# message: 'Optimization terminated successfully.'
+#     nit: 2
+#   slack: array([0., 0.])
+#  status: 0
+# success: True
+#       x: array([0.8, 1.8, 0. ])
+```
+
+  注意，此函数和matlab的linprog有很多相似之处。
+  首先默认就是求解最小值，如果想要求最大值，需要对目标函数的各参数取反（既对z取反），并在得出的结果（func）前取反。
+  并且所有约束条件都为≤，因此例子中传入参数是前面都加了负号。
+  bound为边界的二元元组，None时为无边界。
+  如果存在类似![x_1+2x_2+4x_3=101](https://math.jianshu.com/math?formula=x_1%2B2x_2%2B4x_3%3D101)这种情况，可以：
+
+
+
+```python
+A_eq = [[1,2,4]]
+b_eq = [101]
+```
+
+并在linprog中传入。
+  得出的结果为scipy.optimize.optimize.OptimizeResult（优化结果）类型，是类似字典的结构，例如想要优化结果代入目标函数的值，可以res.fun或res['fun']这样取值。
+
+#### pulp调包代码
+
+
+
+```python
+import pulp
+#目标函数的系数
+z = [2, 3, 1]
+#约束
+a = [[1, 4, 2], [3, 2, 0]]
+b = [8, 6]
+#确定最大化最小化问题，最大化只要把Min改成Max即可
+m = pulp.LpProblem(sense=pulp.LpMinimize)
+#定义三个变量放到列表中
+x = [pulp.LpVariable(f'x{i}', lowBound=0) for i in [1,2,3]]
+#定义目标函数，lpDot可以将两个列表的对应位相乘再加和
+#相当于z[0]*x[0]+z[1]*x[0]+z[2]*x[2]
+m += pulp.lpDot(z, x)
+
+#设置约束条件
+for i in range(len(a)):
+    m += (pulp.lpDot(a[i], x) >= b[i])
+#求解
+m.solve()
+#输出结果
+print(f'优化结果：{pulp.value(m.objective)}')
+print(f'参数取值：{[pulp.value(var) for var in x]}')
+
+#output:
+#优化结果：7.0
+#参数取值：[2.0, 0.0, 3.0]
+```
+
+  每一步的说明已经注释在代码中，可以看到输出结果，两者的变量取值并不一致，但代入目标函数的结果都是一样的。
+  同样的，如果存在类似![x_1+2x_2+4x_3=101](https://math.jianshu.com/math?formula=x_1%2B2x_2%2B4x_3%3D101)这种情况，可以：
+
+
+
+```python
+A_eq = [1,2,4]
+b_eq = 101
+m += (pulp.lpDot(A_eq, x) == b_eq)
+```
+
+## 二、运输问题
+
+   某商品有![m](https://math.jianshu.com/math?formula=m)个产地、![n](https://math.jianshu.com/math?formula=n)个销地，各产地的产量分别为![a_1, ..., a_m](https://math.jianshu.com/math?formula=a_1%2C%20...%2C%20a_m)，各销地的 需求量分别为![b_1,...,b_n](https://math.jianshu.com/math?formula=b_1%2C...%2Cb_n)。若该商品由![i](https://math.jianshu.com/math?formula=i)产地运到![j](https://math.jianshu.com/math?formula=j)销地的单位运价为![c_{ij}](https://math.jianshu.com/math?formula=c_%7Bij%7D)，问应该如何调 运才能使总运费最省？
+   引入变量![x_{ij}](https://math.jianshu.com/math?formula=x_%7Bij%7D)，其取值为由![i](https://math.jianshu.com/math?formula=i)产地运往![j](https://math.jianshu.com/math?formula=j)销地的该商品数量，数学模型为 :![\Large \min {\sum_{i=1}^m\sum_{j=1}^{n}c_{ij}x_{ij}} \\ \left\{ \begin{array}{lr} \Large \sum_{j=1}^n x_{ij} = a_i,\quad i=1,...,m\\ \Large \sum_{i=1}^m x_{ij} = b_j, \quad j=1,2,..., n \\ \Large x_{ij} \geq 0 \end{array} \right.](https://math.jianshu.com/math?formula=%5CLarge%20%5Cmin%20%7B%5Csum_%7Bi%3D1%7D%5Em%5Csum_%7Bj%3D1%7D%5E%7Bn%7Dc_%7Bij%7Dx_%7Bij%7D%7D%20%5C%5C%20%5Cleft%5C%7B%20%5Cbegin%7Barray%7D%7Blr%7D%20%5CLarge%20%5Csum_%7Bj%3D1%7D%5En%20x_%7Bij%7D%20%3D%20a_i%2C%5Cquad%20i%3D1%2C...%2Cm%5C%5C%20%5CLarge%20%5Csum_%7Bi%3D1%7D%5Em%20x_%7Bij%7D%20%3D%20b_j%2C%20%5Cquad%20j%3D1%2C2%2C...%2C%20n%20%5C%5C%20%5CLarge%20x_%7Bij%7D%20%5Cgeq%200%20%5Cend%7Barray%7D%20%5Cright.)
+例题：
+
+![img](https://upload-images.jianshu.io/upload_images/7875603-1b20a6939f19cb7b.png?imageMogr2/auto-orient/strip|imageView2/2/w/772/format/webp)
+
+
+
+#### pulp调包代码
+
+
+
+```python
+import pulp
+import numpy as np
+from pprint import pprint
+
+def transportation_problem(costs, x_max, y_max):
+
+    row = len(costs)
+    col = len(costs[0])
+
+    prob = pulp.LpProblem('Transportation Problem', sense=pulp.LpMaximize)
+
+    var = [[pulp.LpVariable(f'x{i}{j}', lowBound=0, cat=pulp.LpInteger) for j in range(col)] for i in range(row)]
+
+    flatten = lambda x: [y for l in x for y in flatten(l)] if type(x) is list else [x]
+
+    prob += pulp.lpDot(flatten(var), costs.flatten())
+
+    for i in range(row):
+        prob += (pulp.lpSum(var[i]) <= x_max[i])
+
+    for j in range(col):
+        prob += (pulp.lpSum([var[i][j] for i in range(row)]) <= y_max[j])
+
+    prob.solve()
+
+    return {'objective':pulp.value(prob.objective), 'var': [[pulp.value(var[i][j]) for j in range(col)] for i in range(row)]}
+```
+
+然后构造参数传递进去：
+
+
+
+```python
+if __name__ == '__main__':
+    costs = np.array([[500, 550, 630, 1000, 800, 700],
+                       [800, 700, 600, 950, 900, 930],
+                       [1000, 960, 840, 650, 600, 700],
+                       [1200, 1040, 980, 860, 880, 780]])
+
+    max_plant = [76, 88, 96, 40]
+    max_cultivation = [42, 56, 44, 39, 60, 59]
+    res = transportation_problem(costs, max_plant, max_cultivation)
+
+    print(f'最大值为{res["objective"]}')
+    print('各变量的取值为：')
+    pprint(res['var'])
+
+#output:
+#最大值为284230.0
+#各变量的取值为：
+#[[0.0, 0.0, 6.0, 39.0, 31.0, 0.0],
+# [0.0, 0.0, 0.0, 0.0, 29.0, 59.0],
+# [2.0, 56.0, 38.0, 0.0, 0.0, 0.0],
+# [40.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+```
+
+## 三、指派问题
+
+> 该问题引用自《数学建模算法与应用-司守奎》第一章线性规划 3.指派问题
+> 调包解决方法参考https://blog.csdn.net/your_answer/article/details/79160045
+> 可参考官网[https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.linear_sum_assignment.html](https://links.jianshu.com/go?to=https%3A%2F%2Fdocs.scipy.org%2Fdoc%2Fscipy-0.18.1%2Freference%2Fgenerated%2Fscipy.optimize.linear_sum_assignment.html)
+
+  拟分配n人去干![n](https://math.jianshu.com/math?formula=n)项工作，没人干且仅干一项工作，若分配第![i](https://math.jianshu.com/math?formula=i)人去干第![j](https://math.jianshu.com/math?formula=j)项工作，需花费![c_{ij}](https://math.jianshu.com/math?formula=c_%7Bij%7D)单位时间，问应如何分配工作才能使公认花费的总时间最少？
+假设指派问题的系数矩阵为：![C= \left[ \begin{matrix} 12 & 7&9&7&9\\ 8&9&6&6&6 \\ 7&17&12&14&12\\ 15&14&6&6&10\\ 4&10&7&10&6 \end{matrix} \right]](https://math.jianshu.com/math?formula=C%3D%20%5Cleft%5B%20%5Cbegin%7Bmatrix%7D%2012%20%26%207%269%267%269%5C%5C%208%269%266%266%266%20%5C%5C%207%2617%2612%2614%2612%5C%5C%2015%2614%266%266%2610%5C%5C%204%2610%267%2610%266%20%5Cend%7Bmatrix%7D%20%5Cright%5D)  引入变量![x_{ij}](https://math.jianshu.com/math?formula=x_%7Bij%7D)，若分配![i](https://math.jianshu.com/math?formula=i)干![j](https://math.jianshu.com/math?formula=j)工作，则取![x_{ij}=1](https://math.jianshu.com/math?formula=x_%7Bij%7D%3D1)，否则取![x_{ij}=0](https://math.jianshu.com/math?formula=x_%7Bij%7D%3D0)，上述指派问题的数学模型为![\min {\sum_{i=1}^{n} {\sum_{j=1}^{n}{c_{ij}x_{ij}}}} \\ s.t. \sum_{j=1}^{n}x_{ij}=1 \\ \qquad \sum_{i=1}^{n}x_{ij}=1 \\ \qquad x_{ij}=0或1](https://math.jianshu.com/math?formula=%5Cmin%20%7B%5Csum_%7Bi%3D1%7D%5E%7Bn%7D%20%7B%5Csum_%7Bj%3D1%7D%5E%7Bn%7D%7Bc_%7Bij%7Dx_%7Bij%7D%7D%7D%7D%20%5C%5C%20s.t.%20%5Csum_%7Bj%3D1%7D%5E%7Bn%7Dx_%7Bij%7D%3D1%20%5C%5C%20%5Cqquad%20%5Csum_%7Bi%3D1%7D%5E%7Bn%7Dx_%7Bij%7D%3D1%20%5C%5C%20%5Cqquad%20x_%7Bij%7D%3D0%E6%88%961)  指派问题的可行解用矩阵表示，每行每列有且只有一个元素为1，其余元素均为0。
+
+#### 调用scipy解决
+
+  原书使用匈牙利算法解决的，在这里我们用scipy的优化模块解决
+
+
+
+```python
+import numpy as np
+from scipy.optimize import linear_sum_assignment
+```
+
+  引入包，linear_sum_assignment是专门用于解决指派问题的模块。
+
+
+
+```csharp
+efficiency_matrix = np.array([
+    [12,7,9,7,9],
+    [8,9,6,6,6],
+    [7,17,12,14,12],
+    [15,14,6,6,10],
+    [4,10,7,10,6]
+])
+
+row_index, col_index=linear_sum_assignment(efficiency_matrix)
+print(row_index+1)
+print(col_index+1)
+print(efficiency_matrix[row_index,col_index])
+
+#output：
+#[1 2 3 4 5]
+#[2 3 1 4 5]
+#[7 6 7 6 6]
+```
+
+  定义了开销矩阵（指派问题的系数矩阵）efficiency_matrix，传入linear_sum_assignment，结果返回的是最优指派的行和列，例如第一行选择第二列，意为：将第一个人派往第二个工作。而根据numpy.array的性质，传入行和列就会返回行列所对应的值，即为输出的第三列
+
+
+
+```python
+print(efficiency_matrix[row_index, col_index].sum())
+#output：
+# 32
+```
+
+  对其求和，即可得到指派问题的最小时间。
+
+#### 调用pulp解决
+
+  先定义通用解决方法，其中的flatten是递归展开列表用的。
+
+
+
+```python
+def assignment_problem(efficiency_matrix):
+    row = len(efficiency_matrix)
+    col = len(efficiency_matrix[0])
+
+    flatten = lambda x: [y for l in x for y in flatten(l)] if type(x) is list else [x]
+
+    m = pulp.LpProblem('assignment', sense=pulp.LpMinimize)
+    var_x = [[pulp.LpVariable(f'x{i}{j}', cat=pulp.LpBinary) for j in range(col)] for i in range(row)]
+
+    m += pulp.lpDot(efficiency_matrix.flatten(), flatten(var_x))
+
+    for i in range(row):
+        m += (pulp.lpDot(var_x[i], [1]*col) == 1)
+
+    for j in range(col):
+        m += (pulp.lpDot([var_x[i][j] for i in range(row)], [1]*row) == 1)
+
+    m.solve()
+
+    print(m)
+
+    return {'objective':pulp.value(m.objective), 'var': [[pulp.value(var_x[i][j]) for j in range(col)] for i in range(row)]}
+```
+
+  然后定义矩阵，输入求解
+
+
+
+```python
+efficiency_matrix = np.array([
+    [12, 7, 9, 7, 9],
+    [8, 9, 6, 6, 6],
+    [7, 17, 12, 14, 9],
+    [15, 14, 6, 6, 10],
+    [4, 10, 7, 10, 9]
+])
+
+res = assignment_problem(efficiency_matrix)
+print(f'最小值{res["objective"]}')
+print(res['var'])
+
+#output
+#最小值32.0
+#[[0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0, 0.0]]
+```
+
+## 四、pulp的使用方式
+
+#### 基本使用
+
+  可以看出，pulp在线性规划这一部分，有更多的通用性，编写程序更自由。前面的例子已经足够丰富了，但是如果读到这里还不去清楚pulp的使用方式的话……可以去百度一下，我这里也简单讲一讲。
+
+  首先是定义一个问题，第一个参数为问题的名称，不过并非必要的参数，而通过sense参数可决定优化的是最大值还是最小值
+
+
+
+```python
+prob = pulp.LpProblem('problem name', sense=pulp.LpMinimize)
+```
+
+  然后是定义变量：
+
+
+
+```python
+x0 = pulp.LpVariable('x0', lowBound=0, upBound=None, cat=pulp.LpInteger)
+x1 = pulp.LpVariable('x1', lowBound=0, upBound=None, cat=pulp.LpInteger)
+x2 = pulp.LpVariable('x2', lowBound=0, upBound=None, cat=pulp.LpInteger)
+```
+
+  这里定义了三个变量，第一个参数为变量名，lowBound 、upBound为上下限，cat为变量类型，默认为连续变量，还可以设为离散变量或二值变量，具体怎么设置？
+如上述代码所示，pulp.LpInteger为离散变量，pulp.LpBinary为二值变量，同时也可以传入'Integer'字符串的方式指明变量类型。从上面几个问题的代码可以看出，我几乎没有单个定义变量，而是批量定义的。
+  然后是添加目标函数：
+
+
+
+```python
+prob += 2*x0-5*x1+4*x2
+```
+
+  只要让问题（prob）直接加变量的表达式即可添加目标函数。
+  再之后是添加约束：
+
+
+
+```python
+prob += (x0+x1-6*x2 <= 120)
+```
+
+  只要让问题（prob）直接加变量的判断式即可添加约束
+
+
+
+```python
+prob.solve()
+```
+
+  调用solve方法解出答案，如果省去这一步，后面的变量和结果值都会显示None。
+
+
+
+```python
+print(pulp.value(prob.objective))
+print(pulp.value(x0))
+```
+
+打印优化结果，并显示当优化达到结果时x0的取值。
+
+#### 思考程序本质
+
+  problem对象是如何通过不断加来获得目标函数和约束的？熟悉python或者c++的朋友可能会想到一个词：操作符重载。
+  没错，就是这么实现的，上述的对象几乎都实现了不同的重载。
+  首先是Problem对象prob，全名pulp.pulp.LpProblem；当打印输出（print）时，会打印出问题名，当不断增加目标函数、约束时，也会随着print输出；而它的__add__一定是被定义过了，我们先说其他对象。
+  当我们定义一个变量时，它的类型是pulp.pulp.LpVariable，当我们对这些变量和其他变量做加法、和其他常数做乘法时，它会返回一个新的对象，经检测，这个新对象的类名叫pulp.pulp.LpAffineExpression，顾名思义，叫做关系表达式；如果print，会打印这个关系表达式。
+  而如果对关系表达式做出：>=、<=、==时，会返回新的对象，类名叫做pulp.pulp.LpConstraint，即约束对象；如果print，会打印这个约束。
+  将关系表达式（pulp.pulp.LpAffineExpression）与问题（pulp.pulp.LpProblem）相加时，会返回新的问题对象，并且新的问题对象会将这个关系表达式作为目标函数。
+  将约束对象（pulp.pulp.LpConstraint）与问题（pulp.pulp.LpProblem）相加时，会返回新的问题对象，并且这个新的问题对象会多出约束对象所代表的约束条件。
+  调用问题对象的solve方法，解出线性规划的解。
+  访问问题对象的objective成员变量，会得到目标函数（关系表达式对象）。
+  调用pulp的value方法，将获得对变量代入值的结果，如果是关系表达式对象，将获得优化结果；如果是变量对象，将获得优化结果达到时的变量取值；如果是None，说明你忘调用solve了。
